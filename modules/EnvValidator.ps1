@@ -9,9 +9,8 @@
     The `$Test` switch can be used to enable debug logging, providing additional details about the validation process.
 #>
 
-$scriptDir = $PSScriptRoot
-. (Join-Path $scriptDir 'Logging.ps1')
-. (Join-Path $scriptDir 'Config.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
 
 # Define tool-specific environment variable requirements
 $TOOL_ENV_VARS = @{

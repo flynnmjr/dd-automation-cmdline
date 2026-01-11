@@ -1,74 +1,52 @@
 @{
-    # Tools enable/disable flags
     Tools = @{
         TenableWAS = $true
         SonarQube  = $false
         BurpSuite  = $false
-        DefectDojo = $false
+        DefectDojo = $true
         GitHub = @{
-            CodeQL = $true
-            SecretScanning = $true
-            Dependabot = $true
+            CodeQL         = $true   # Enable GitHub CodeQL SARIF downloads/uploads
+            SecretScanning = $false  # Enable GitHub Secret Scanning downloads/uploads
+            Dependabot     = $false  # Enable GitHub Dependabot alert downloads/uploads
         }
     }
 
-    # File paths for tools requiring local inputs
-    Paths = @{
-        BurpSuiteXmlFolder = 'C:\Scans\Burp'
+    # Webhook Notification Settings
+    Webhooks = @{
+        Enabled       = $false
+        Url           = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+        ReportSuccess = $true # Set to $false to only report Failures/Errors
     }
 
-    # API base URLs for tools
+    Paths = @{
+        BurpSuiteXmlFolder = 'C:\SecurityScans\BurpSuite\'
+    }
+
     ApiBaseUrls = @{
-        DefectDojo = 'https://defect-dojo.internal.bamtech.net/api/v2'
         TenableWAS = 'https://fedcloud.tenable.com/'
-        SonarQube  = 'https://sonarqube.example.com/api'
-        BurpSuite  = 'http://127.0.0.01:1234/api'
+        SonarQube  = 'https://sonarqube.internal.example.com'
+        BurpSuite  = 'https://burpsuite.internal.example.com' # Placeholder if API used, or just local path
+        DefectDojo = 'https://defect-dojo.internal.example.com/api/v2'
         GitHub     = 'https://api.github.com'
     }
 
-    # Default scan identifiers (optional)
-    TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'  # Set a default scan ID to export from Tenable WAS
+    TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'
 
-    # DefectDojo selection identifiers (optional)
     DefectDojo = @{
-        ProductId         = 0  # Enter the DefectDojo product Id
-        EngagementId      = 0  # Enter the DefectDojo engagement Id
-        TenableWASTestId  = 0  # Enter the DefectDojo test Id for TenableWAS
-        SonarQubeTestId   = 0  # Enter the DefectDojo test Id for SonarQube
-        BurpSuiteTestId   = 0  # Enter the DefectDojo test Id for BurpSuite
-        GitHubDependabotTestId = 0  # Enter the DefectDojo test Id for GitHub Dependabot alerts
-        MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
-        APIScanConfigId = 1
+        ProductId         = 1
+        EngagementId      = 123
+        APIScanConfigId   = 1
+        TenableWASTestId  = 456
+        SonarQubeTestId   = 789
+        BurpSuiteTestId   = 101
+        GitHubDependabotTestId = 202
+        MinimumSeverity   = 'Low'
     }
 
-    # GitHub Organizations to process (one or many)
     GitHub = @{
-        Orgs = @(
-            'BAMTech-MyVector'
-            #'Example-AnotherOrg'
-        )
-
-        # Repository filtering options (all optional)
-        SkipArchivedRepos = $true  # Skip archived repositories (default: true)
-
-        # Include-only filter: If specified, ONLY these repos will be processed
-        # Supports wildcards: 'production-*', '*-api', '*test*'
-        # If not specified or empty, all repos are considered (subject to exclude filter)
-        IncludeRepos = @(
-            # 'production-*'    # Include all repos starting with 'production-'
-            # 'critical-app'    # Include specific repo by exact name
-            # '*-security'      # Include all repos ending with '-security'
-        )
-
-        # Exclude filter: These repos will be skipped
-        # Supports wildcards: 'test-*', '*-deprecated', '*-old'
-        # Applied after include filter
-        ExcludeRepos = @(
-            # 'test-*'          # Exclude all repos starting with 'test-'
-            # '*-demo'          # Exclude all repos ending with '-demo'
-            # 'archived-*'      # Exclude all repos starting with 'archived-'
-            # 'old-legacy-app'  # Exclude specific repo by exact name
-        )
+        Orgs = @('my-org-1', 'my-org-2')
+        SkipArchivedRepos = $true
+        IncludeRepos = @()
+        ExcludeRepos = @()
     }
-
 }

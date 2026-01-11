@@ -46,7 +46,7 @@ function Validate-Config {
     $errors = @()
 
     # Required top-level keys
-    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo', 'GitHub')
+    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo', 'GitHub', 'Webhooks')
     foreach ($key in $requiredKeys) {
         if (-not $Config.ContainsKey($key)) {
             $errors += "Missing required top-level configuration key: $key"
@@ -105,6 +105,11 @@ function Validate-Config {
                 $errors += 'Configuration.GitHub.Orgs contains blank organization names'
             }
         }
+    }
+
+    # Validate Webhooks keys
+    if ($Config.ContainsKey('Webhooks') -and $Config.Webhooks -isnot [hashtable]) {
+        $errors += "Configuration.Webhooks must be a hashtable."
     }
 
     if ($errors.Count -gt 0) {

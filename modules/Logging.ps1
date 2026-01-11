@@ -34,7 +34,7 @@ function Write-Log {
         [Parameter(Mandatory = $true)]
         [string]$Message,
 
-        [ValidateSet('INFO','WARNING','ERROR')]
+        [ValidateSet('INFO','WARNING','ERROR','DEBUG')]
         [string]$Level = 'INFO'
     )
     if (-not $script:LogFilePath) {
