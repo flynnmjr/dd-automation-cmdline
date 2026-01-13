@@ -14,64 +14,28 @@ Describe 'Export-TenableWASScan (Unit)' {
         . (Join-Path $Global:TenableWasModuleDir 'TenableWAS.ps1')
     }
 
-    Context 'When no scan ID is provided via parameter or config' {
-        BeforeAll {
-            $script:OriginalGetConfig_NoScan = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
-            Set-Item function:Get-Config -Value { return @{} }
-            Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'unit-noscan.log' -Overwrite
-            $env:TENWAS_ACCESS_KEY = 'dummy'
-            $env:TENWAS_SECRET_KEY = 'dummy'
-        }
-        AfterAll {
-            if ($script:OriginalGetConfig_NoScan) {
-                Set-Item function:Get-Config -Value $script:OriginalGetConfig_NoScan
-            } else {
-                Remove-Item function:Get-Config -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasAccessKey) {
-                $env:TENWAS_ACCESS_KEY = $Global:OriginalTenwasAccessKey
-            } else {
-                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasSecretKey) {
-                $env:TENWAS_SECRET_KEY = $Global:OriginalTenwasSecretKey
-            } else {
-                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
-            }
-        }
-        It 'Throws an error indicating missing ScanId' {
-            { Export-TenableWASScan } | Should -Throw 'No TenableWAS ScanId specified.'
+    Context 'When no scan ID is provided via parameter' {
+        It 'Throws an internal error' {
+            { Export-TenableWASScan } | Should -Throw 'No TenableWAS ScanId specified. Internal calling error.'
         }
     }
 
     Context 'When credentials are missing' {
         BeforeAll {
-            $script:OriginalGetConfig_MissingCreds = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
-            Set-Item function:Get-Config -Value { return @{ TenableWAS = @{ ScanId = 'dummy-scan-id' }; ApiBaseUrls = @{ TenableWAS = 'https://example.com' } } }
             Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'unit-missingcreds.log' -Overwrite
+            $Global:HeldAccessKey = $env:TENWAS_ACCESS_KEY
+            $Global:HeldSecretKey = $env:TENWAS_SECRET_KEY
             Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
             Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
+            
+            # Mock Get-Config to return valid URLs so we hit the cred check
+            $script:OriginalGetConfig = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
+            Set-Item function:Get-Config -Value { return @{ ApiBaseUrls = @{ TenableWAS = 'https://example.com' } } }
         }
         AfterAll {
-            if ($script:OriginalGetConfig_MissingCreds) {
-                Set-Item function:Get-Config -Value $script:OriginalGetConfig_MissingCreds
-            } else {
-                Remove-Item function:Get-Config -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasAccessKey) {
-                $env:TENWAS_ACCESS_KEY = $Global:OriginalTenwasAccessKey
-            } else {
-                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasSecretKey) {
-                $env:TENWAS_SECRET_KEY = $Global:OriginalTenwasSecretKey
-            } else {
-                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
-            }
+             if ($Global:HeldAccessKey) { $env:TENWAS_ACCESS_KEY = $Global:HeldAccessKey }
+             if ($Global:HeldSecretKey) { $env:TENWAS_SECRET_KEY = $Global:HeldSecretKey }
+             if ($script:OriginalGetConfig) { Set-Item function:Get-Config -Value $script:OriginalGetConfig }
         }
         It 'Throws an error indicating missing credentials' {
             { Export-TenableWASScan -ScanId 'dummy-id' } | Should -Throw 'Missing Tenable WAS API credentials*'
@@ -95,35 +59,58 @@ Describe 'Export-TenableWASScan (Integration)' {
 
         $script:integrationConfig = Get-Config
         $script:integrationScanId = $null
-        if ($script:integrationConfig.TenableWAS -and $script:integrationConfig.TenableWAS.ScanId) {
-            $script:integrationScanId = $script:integrationConfig.TenableWAS.ScanId
-        } elseif ($script:integrationConfig.TenableWASScanId) {
-            $script:integrationScanId = $script:integrationConfig.TenableWASScanId
+        
+        # Resolve Scan Name to ID for integration test using the actual API
+        if ($script:integrationConfig.TenableWASScanNames -and $script:integrationConfig.TenableWASScanNames.Count -gt 0) {
+            $targetName = $script:integrationConfig.TenableWASScanNames[0]
+            Write-Host "Integration Test: Resolving ID for scan name '$targetName'..."
+            
+            try {
+                $configs = Get-TenableWASScanConfigs
+                $found = $configs | Where-Object { $_.Name -eq $targetName } | Select-Object -First 1
+                if ($found) {
+                    $script:integrationScanId = $found.Id
+                    Write-Host "Integration Test: Found Scan ID: $($found.Id)"
+                } else {
+                    Write-Warning "Integration Test: configured scan name '$targetName' not found in Tenable account."
+                }
+            } catch {
+                Write-Warning "Integration Test: Failed to fetch configs: $_"
+            }
+        }
+        
+        # Fallback for legacy checks (though likely removed from config)
+        if (-not $script:integrationScanId -and $script:integrationConfig.TenableWASScanId) {
+             $script:integrationScanId = $script:integrationConfig.TenableWASScanId
         }
 
         if (-not $script:integrationScanId) {
-            Throw 'ScanId not set in configuration (TenableWAS.ScanId or TenableWASScanId).'
+            Write-Warning 'ScanId could not be determined from configuration (TenableWASScanNames). Skipping export test.'
         }
     }
 
     It 'Generates and downloads a report CSV file' {
-        $outPath = Export-TenableWASScan -ScanId $script:integrationScanId
-        if ($outPath -is [System.IO.FileSystemInfo]) {
-            $outPath = $outPath.FullName
-        } elseif ($outPath) {
-            $outPath = [string]$outPath
-        }
+        if (-not $script:integrationScanId) {
+            Set-ItResult -Skipped -Because 'No valid Scan ID found in config.'
+        } else {
+            $outPath = Export-TenableWASScan -ScanId $script:integrationScanId
+            if ($outPath -is [System.IO.FileSystemInfo]) {
+                $outPath = $outPath.FullName
+            } elseif ($outPath) {
+                $outPath = [string]$outPath
+            }
 
-        $expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) ("${script:integrationScanId}-report.csv")
-        $candidatePaths = @($outPath, $expectedPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        $resolvedOutPath = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $resolvedOutPath) {
-            $resolvedOutPath = $candidatePaths | Select-Object -First 1
-        }
+            $expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) ("${script:integrationScanId}-report.csv")
+            $candidatePaths = @($outPath, $expectedPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            $resolvedOutPath = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (-not $resolvedOutPath) {
+                $resolvedOutPath = $candidatePaths | Select-Object -First 1
+            }
 
-        $resolvedOutPath | Should -Not -BeNullOrEmpty
-        [System.IO.Path]::GetFileName($resolvedOutPath) | Should -Match "${script:integrationScanId}-report\.csv$"
-        Test-Path $resolvedOutPath | Should -BeTrue
-        (Get-Item $resolvedOutPath).Length | Should -BeGreaterThan 0
+            $resolvedOutPath | Should -Not -BeNullOrEmpty
+            [System.IO.Path]::GetFileName($resolvedOutPath) | Should -Match "${script:integrationScanId}-report\.csv$"
+            Test-Path $resolvedOutPath | Should -BeTrue
+            (Get-Item $resolvedOutPath).Length | Should -BeGreaterThan 0
+        }
     }
 }

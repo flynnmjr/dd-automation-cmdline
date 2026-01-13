@@ -52,3 +52,33 @@ function Write-Log {
     }
 }
 
+function Cleanup-Logs {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [int]$RetentionDays
+    )
+
+    if (-not (Test-Path -Path $LogDirectory)) {
+        Write-Verbose "Log directory $LogDirectory does not exist. Skipping cleanup."
+        return
+    }
+
+    $cutoffDate = (Get-Date).AddDays(-$RetentionDays)
+    Write-Verbose "Cleaning up logs older than $cutoffDate in $LogDirectory"
+
+    $filesToDelete = Get-ChildItem -Path $LogDirectory -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+    
+    foreach ($file in $filesToDelete) {
+        try {
+            Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+            Write-Verbose "Deleted old log file: $($file.Name)"
+        } catch {
+            Write-Warning "Failed to delete old log file $($file.Name): $_"
+        }
+    }
+}
+

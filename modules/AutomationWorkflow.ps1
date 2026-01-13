@@ -10,46 +10,95 @@
 function Invoke-TenableWASWorkflow {
     param([hashtable]$Config)
     
-    $result = @{
-        Tool = 'TenableWAS'
-        Status = 'Success'
-        Message = "Processing started"
+    $results = @()
+
+    $scanNames = @()
+    if ($Config.TenableWASScanNames) {
+        $scanNames = @($Config.TenableWASScanNames)
     }
 
-    Write-Log -Message "Starting TenableWAS scan export (Scan ID: $($Config.TenableWASScanId))" -Level 'INFO'
-    try {
-        $exportedFile = Export-TenableWASScan -ScanId $Config.TenableWASScanId
-        Write-Log -Message "TenableWAS scan export completed: $exportedFile" -Level 'INFO'
-
-        if ($Config.Tools.DefectDojo) {
-            Write-Log -Message "Uploading TenableWAS scan report to DefectDojo..." -Level 'INFO'
-
-            if (-not $Config.DefectDojo.TenableWASTestId) {
-                Write-Log -Message "No TenableWAS test ID configured for DefectDojo upload" -Level 'WARNING'
-                $result.Status = 'Warning'
-                $result.Message = "Export successful, but upload skipped (No Test ID configured)."
-                return $result
-            }
-
-            # Ensure file path is explicitly converted to string
-            $filePathString = ([string]$exportedFile).Trim()
-
-            # Upload directly to the TenableWAS test only
-            Upload-DefectDojoScan -FilePath $filePathString -TestId $Config.DefectDojo.TenableWASTestId -ScanType 'Tenable Scan' -CloseOldFindings $true
-            
-            $msg = "TenableWAS scan report uploaded successfully to DefectDojo Test ID: $($Config.DefectDojo.TenableWASTestId)"
-            Write-Log -Message $msg -Level 'INFO'
-            $result.Message = $msg
-        } else {
-             $result.Message = "Export successful. Upload disabled in config."
+    if ($scanNames.Count -eq 0) {
+        $msg = "No TenableWASScanNames configured."
+        Write-Log -Message $msg -Level 'WARNING'
+        $results += @{
+            Tool = 'TenableWAS'
+            Status = 'Warning'
+            Message = $msg
         }
-    } catch {
-        $errMsg = "TenableWAS processing failed: $_"
-        Write-Log -Message $errMsg -Level 'ERROR'
-        $result.Status = 'Error'
-        $result.Message = $errMsg
+        return $results
     }
-    return $result
+
+    # Fetch available scans to resolve names to IDs
+    $availableScans = Get-TenableWASScanConfigs
+
+    if ($availableScans.Count -eq 0) {
+        $msg = "No active TenableWAS scans found in Tenable account."
+        Write-Log -Message $msg -Level 'ERROR'
+        $results += @{
+            Tool = 'TenableWAS'
+            Status = 'Error'
+            Message = $msg
+        }
+        return $results
+    }
+
+    foreach ($name in $scanNames) {
+        $result = @{
+            Tool = "TenableWAS ($name)"
+            Status = 'Success'
+            Message = "Processing started"
+        }
+
+        try {
+            # Resolve Name to ID
+            $foundScan = $availableScans | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+            
+            if (-not $foundScan) {
+                throw "Scan name '$name' not found in TenableWAS account."
+            }
+            
+            $scanId = $foundScan.Id
+            Write-Log -Message "Resolved Scan Name '$name' to ID: $scanId" -Level 'INFO'
+
+            Write-Log -Message "Starting TenableWAS scan export (Scan: $name)" -Level 'INFO'
+            
+            $exportedFile = Export-TenableWASScan -ScanId $scanId
+            Write-Log -Message "TenableWAS scan export completed: $exportedFile" -Level 'INFO'
+
+            if ($Config.Tools.DefectDojo) {
+                Write-Log -Message "Uploading TenableWAS scan report to DefectDojo..." -Level 'INFO'
+
+                if (-not $Config.DefectDojo.TenableWASTestId) {
+                    Write-Log -Message "No TenableWAS test ID configured for DefectDojo upload" -Level 'WARNING'
+                    $result.Status = 'Warning'
+                    $result.Message = "Export successful, but upload skipped (No Test ID configured)."
+                    $results += $result
+                    continue
+                }
+
+                # Ensure file path is explicitly converted to string
+                $filePathString = ([string]$exportedFile).Trim()
+
+                # Upload directly to the TenableWAS test only
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $Config.DefectDojo.TenableWASTestId -ScanType 'Tenable Scan' -CloseOldFindings $true
+                
+                $msg = "TenableWAS scan report uploaded successfully to DefectDojo Test ID: $($Config.DefectDojo.TenableWASTestId)"
+                Write-Log -Message $msg -Level 'INFO'
+                $result.Message = $msg
+            } else {
+                 $result.Message = "Export successful. Upload disabled in config."
+            }
+        } catch {
+            $errMsg = "TenableWAS processing failed for '$name': $_"
+            Write-Log -Message $errMsg -Level 'ERROR'
+            $result.Status = 'Error'
+            $result.Message = $errMsg
+        }
+        
+        $results += $result
+    }
+    
+    return $results
 }
 
 function Invoke-SonarQubeWorkflow {

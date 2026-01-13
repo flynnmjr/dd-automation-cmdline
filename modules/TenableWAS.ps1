@@ -22,15 +22,9 @@ function Export-TenableWASScan {
     $config = Get-Config
 
 
-    # Determine Scan ID from parameter or config
+    # Determine Scan ID from parameter
     if (-not $ScanId) {
-        if ($config.TenableWAS -and $config.TenableWAS.ScanId) {
-            $ScanId = $config.TenableWAS.ScanId
-        } elseif ($config.TenableWASScanId) {
-            $ScanId = $config.TenableWASScanId
-        } else {
-            Throw "No TenableWAS ScanId specified."
-        }
+        Throw "No TenableWAS ScanId specified. Internal calling error."
     }
 
     # Prepare API connection
@@ -74,6 +68,75 @@ function Export-TenableWASScan {
 
     Write-Log -Message "Tenable WAS report saved to $outFile" -Level 'INFO'
     return $outFile
+}
+
+function Get-TenableWASScanConfigs {
+    [CmdletBinding()]
+    param()
+
+    $config = Get-Config
+    $apiUrl = $config.ApiBaseUrls.TenableWAS.TrimEnd('/')
+    $accessKey = [Environment]::GetEnvironmentVariable('TENWAS_ACCESS_KEY')
+    $secretKey = [Environment]::GetEnvironmentVariable('TENWAS_SECRET_KEY')
+
+    if (-not $accessKey -or -not $secretKey) {
+        Write-Log -Message "Missing Tenable WAS API credentials." -Level 'ERROR'
+        return @()
+    }
+
+    $headers = @{ 
+        "X-ApiKeys"    = "accessKey=$accessKey;secretKey=$secretKey" 
+        "Content-Type" = "application/json"
+        "Accept"       = "application/json"
+    }
+
+    $pageSize = 200
+    $offset = 0
+
+    try {
+        Write-Log -Message "Fetching Tenable WAS scan configurations..." -Level 'INFO'
+
+        $results = @()
+        $seenIds = [System.Collections.Generic.HashSet[string]]::new()
+        
+        do {
+            $searchUri = "$apiUrl/was/v2/configs/search?limit=$pageSize&offset=$offset"
+            $response = Invoke-RestMethod -Method Post -Uri $searchUri -Headers $headers -UseBasicParsing
+
+            $items = @()
+            if ($null -ne $response.items) {
+                $items = $response.items
+            } elseif ($null -ne $response.data) {
+                $items = $response.data
+            }
+
+            $addedThisPage = 0
+            foreach ($item in $items) {
+                # Skip trashed configs
+                if ($item.in_trash) {
+                    continue
+                }
+                
+                $idStr = [string]$item.config_id
+                if ($idStr -and $seenIds.Add($idStr)) {
+                    $results += [PSCustomObject]@{
+                        Id = $idStr
+                        Name = $item.name
+                    }
+                    $addedThisPage++
+                }
+            }
+
+            $offset += $pageSize
+        } while ($items.Count -eq $pageSize)
+
+        Write-Log -Message "Found $($results.Count) active Tenable WAS scan configurations." -Level 'INFO'
+        return $results
+
+    } catch {
+        Write-Log -Message "Failed to fetch Tenable WAS scan configs: $_" -Level 'ERROR'
+        return @()
+    }
 }
 
 #DEBUG

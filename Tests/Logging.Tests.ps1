@@ -59,3 +59,39 @@ Describe 'Write-Log' {
         }
     }
 }
+
+Describe 'Cleanup-Logs' {
+    BeforeAll {
+        $testDirectory = Split-Path -Parent $PSCommandPath
+        $repoRoot = Split-Path -Parent $testDirectory
+        $modulePath = Join-Path $repoRoot 'modules/Logging.ps1'
+        . $modulePath
+    }
+
+    It 'Deletes logs older than retention period' {
+        $logDir = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        New-Item -Path $logDir -ItemType Directory | Out-Null
+        
+        $retentionDays = 7
+        
+        # Create old file (8 days old)
+        $oldFile = Join-Path $logDir 'old.log'
+        New-Item -Path $oldFile -ItemType File | Out-Null
+        (Get-Item $oldFile).LastWriteTime = (Get-Date).AddDays(-($retentionDays + 1))
+        
+        # Create new file (today)
+        $newFile = Join-Path $logDir 'new.log'
+        New-Item -Path $newFile -ItemType File | Out-Null
+        
+        Cleanup-Logs -LogDirectory $logDir -RetentionDays $retentionDays
+        
+        Test-Path $oldFile | Should -BeFalse
+        Test-Path $newFile | Should -BeTrue
+    }
+
+    It 'Does nothing if directory does not exist' {
+        $logDir = Join-Path $TestDrive "NonExistentDir"
+        { Cleanup-Logs -LogDirectory $logDir -RetentionDays 7 } | Should -Not -Throw
+    }
+}
+

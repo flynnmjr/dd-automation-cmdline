@@ -42,7 +42,8 @@ $scriptDir = $PSScriptRoot
 
 # Initialize Logging
 try {
-    Initialize-Log -LogDirectory (Join-Path $scriptDir 'logs') -LogFileName 'Run-Automation.log' -Overwrite
+    $logName = "Run-Automation-$(Get-Date -Format 'yyyy-MM-dd').log"
+    Initialize-Log -LogDirectory (Join-Path $scriptDir 'logs') -LogFileName $logName
     Write-Log -Message "Run-Automation started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 } catch {
     Write-Error "Failed to initialize logging: $_"
@@ -57,6 +58,15 @@ try {
         $config = Get-Config -ConfigPath $ConfigPath
     } else {
         $config = Get-Config
+    }
+
+    # Cleanup Old Logs
+    if ($config.Logging.LogRetentionDays) {
+        try {
+            Cleanup-Logs -LogDirectory (Join-Path $scriptDir 'logs') -RetentionDays $config.Logging.LogRetentionDays
+        } catch {
+            Write-Log -Message "Failed to cleanup old logs: $_" -Level 'WARNING'
+        }
     }
     
     # Valdiate Config

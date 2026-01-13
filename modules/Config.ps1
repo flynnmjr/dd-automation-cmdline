@@ -42,11 +42,19 @@ function Validate-Config {
     )
 
     Normalize-GitHubConfig -Config $Config
+    
+    # Normalize Logging (Set defaults)
+    if (-not $Config.ContainsKey('Logging')) {
+        $Config.Logging = @{ LogRetentionDays = 14 }
+    }
+    elseif (-not $Config.Logging.ContainsKey('LogRetentionDays')) {
+        $Config.Logging.LogRetentionDays = 14
+    }
 
     $errors = @()
 
     # Required top-level keys
-    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo', 'GitHub', 'Webhooks')
+    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo', 'GitHub', 'Webhooks', 'Logging')
     foreach ($key in $requiredKeys) {
         if (-not $Config.ContainsKey($key)) {
             $errors += "Missing required top-level configuration key: $key"
@@ -179,14 +187,24 @@ function Save-Config {
         $sb.AppendLine("        $api = '$url'") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
-    #TenableWAS ScanId
-    if ($Config.ContainsKey('TenableWASScanId')) {
+    # Logging
+    $sb.AppendLine('') | Out-Null
+    $sb.AppendLine('    Logging = @{') | Out-Null
+    $retention = if ($Config.Logging.LogRetentionDays) { $Config.Logging.LogRetentionDays } else { 14 }
+    $sb.AppendLine("        LogRetentionDays = $retention") | Out-Null
+    $sb.AppendLine('    }') | Out-Null
+    # TenableWAS ScanNames
+    if ($Config.ContainsKey('TenableWASScanNames')) {
         $sb.AppendLine('') | Out-Null
-        $scanId = $Config.TenableWASScanId
-        if ($null -ne $scanId) {
-            $sb.AppendLine("    TenableWASScanId = '$scanId'") | Out-Null
+        $scanNames = $Config.TenableWASScanNames
+        if ($null -ne $scanNames -and $scanNames.Count -gt 0) {
+            $sb.AppendLine('    TenableWASScanNames = @(') | Out-Null
+            foreach ($name in $scanNames) {
+                $sb.AppendLine("        '$name'") | Out-Null
+            }
+            $sb.AppendLine('    )') | Out-Null
         } else {
-            $sb.AppendLine('    TenableWASScanId = $null') | Out-Null
+            $sb.AppendLine('    TenableWASScanNames = @()') | Out-Null
         }
     }
     # DefectDojo selections

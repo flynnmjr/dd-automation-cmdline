@@ -30,7 +30,15 @@
         GitHub     = 'https://api.github.com'
     }
 
-    TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'
+    Logging = @{
+        LogRetentionDays = 14
+    }
+    # Tenable WAS
+    # REQUIRED: List of scan names to export and upload.
+    # The automation will look up the Scan ID for each name.
+    TenableWASScanNames = @(
+        'My Tenable Scan Name'
+    )
 
     DefectDojo = @{
         ProductId         = 1
